@@ -8,7 +8,7 @@ export type ActionFunction = {
 export type Setter<Input> = (val: Input) => void;
 
 export type AsyncSelectorPromiseState = {
-  id: string;
+  callId: string;
   cancelled: boolean;
   onCancel: () => void;
 };

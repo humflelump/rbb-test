@@ -184,10 +184,11 @@ export function createAsyncSelector(params) {
   const uid = createId();
   const defaultValue = 'defaultValue' in params ? params.defaultValue : null;
 
-  const [isLoadingAtom, errorAtom, valueAtom] = [
+  const [isLoadingAtom, errorAtom, valueAtom, callState] = [
     { id: `l_${id}`, data: false },
     { id: `e_${id}`, data: void 0 },
     { id: `v_${id}`, data: defaultValue },
+    { id: `c_${id}`, data: null },
   ].map((d) =>
     atom({
       ...d,
@@ -208,13 +209,19 @@ export function createAsyncSelector(params) {
     func: (d) => d,
   });
 
-  const newFunc = throttle((vals, key) => {
-    func(...vals)
+  const newFunc = throttle((vals, key, callId) => {
+    const state = callState.get(key);
+    if (state.callId !== callId) return;
+    func(...vals, state)
       .then((res) => {
+        if (state.cancelled) return;
+        callState.set(null, key);
         valueAtom.set(res, key);
         isLoadingAtom.set(false, key);
       })
       .catch((err) => {
+        if (state.cancelled) return;
+        callState.set(null, key);
         errorAtom.set(err, key);
         isLoadingAtom.set(false, key);
       });
@@ -227,8 +234,16 @@ export function createAsyncSelector(params) {
       const vals = d.slice(0, d.length - 1);
       const key = d[d.length - 1];
       if (!shouldUseAsync(...vals)) return;
+      const prevState = callState.get(key);
+      if (prevState) {
+        prevState.cancelled = true;
+        prevState.onCancel();
+        errorAtom.set(void 0, key);
+      }
+      const callId = createId();
+      callState.set({callId, cancelled: false, onCancel: _ => _}, key);
       isLoadingAtom.set(true, key);
-      newFunc(vals, key);
+      newFunc(vals, key, callId);
     },
   });
 
